@@ -106,8 +106,9 @@ enum RuntimeValue {
     return value as! T
   }
 
-  var asIntLiteral: Int   { asNative(ofType: Int.self) }
-  var asI64       : Int64 { asNative(ofType: Int64.self) }
+  var asIntLiteral: Int { asNative(ofType: Int.self) }
+
+  var asI64: Int64 { asNative(ofType: Int64.self) }
 
   subscript<C>(offsets: C) -> RuntimeValue where C: BidirectionalCollection, C.Element == Int {
     get {

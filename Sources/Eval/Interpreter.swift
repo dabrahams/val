@@ -66,7 +66,7 @@ public struct Interpreter {
   /// Start the interpreter.
   public mutating func start() throws -> Int64 {
     guard let function = functions["main"],
-          let entryID = function.order.first
+          let entryID = function.entryID
     else {
       throw RuntimeError(message: "no entry point")
     }

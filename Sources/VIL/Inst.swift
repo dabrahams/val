@@ -7,7 +7,7 @@ public protocol Inst: AnyObject {}
 /// specified type.
 public final class AllocStackInst: Inst, Value {
 
-  /// The (Val) type of the allocated value.
+  /// The type of the allocated value.
   public let allocatedType: VILType
 
   public var type: VILType { allocatedType.address }
@@ -197,6 +197,7 @@ public final class PartialApplyInst: Inst, Value {
   public let type: VILType
 
   init(fun: Value, args: [Value]) {
+    assert(args.count > 0)
     self.fun = fun
     self.args = args
 
@@ -208,6 +209,23 @@ public final class PartialApplyInst: Inst, Value {
 
     self.type = .lower(partialValType)
   }
+
+}
+
+/// Wraps a bare function reference into a thick function container with an empty environment.
+///
+/// Bare function references can only appear as operands. This instruction serves to wrap them into
+/// a thick container so that they have the same layout as partially applied functions.
+public final class ThinToThickInst: Inst, Value {
+
+  /// A bare reference to a VIL function.
+  public let ref: FunRef
+
+  public init(ref: FunRef) {
+    self.ref = ref
+  }
+
+  public var type: VILType { ref.type }
 
 }
 
@@ -436,15 +454,11 @@ public final class CondBranchInst: Inst {
 
 }
 
-/// Branches conditionally to one of several blocks depending on the value of
-
 /// Returns from a function.
 public final class RetInst: Inst {
 
   /// The value being returned.
   public let value: Value
-
-  public var result: Value? { nil }
 
   init(value: Value) {
     self.value = value

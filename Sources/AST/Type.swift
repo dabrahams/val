@@ -412,6 +412,7 @@ public final class BuiltinIntType: BuiltinType {
   public let bitWidth: Int
 
   init(context: Context, name: String, bitWidth: Int) {
+    assert(bitWidth > 0)
     self.bitWidth = bitWidth
     super.init(context: context, name: name)
   }
