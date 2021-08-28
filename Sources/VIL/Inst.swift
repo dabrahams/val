@@ -21,8 +21,8 @@ public final class AllocStackInst: Inst, Value {
 
 /// Allocates the memory necessary to pack an existential package into the specified container.
 ///
-/// This returns the address of an uninitialized memory block, large enough to store an instance of
-/// the specified witness.
+/// `alloc_existential` returns the address of an uninitialized memory block, large enough to store
+/// an instance of the specified witness.
 public final class AllocExistentialInst: Inst, Value {
 
   /// The address of the existential container.
@@ -61,10 +61,6 @@ public final class OpenExistentialInst: Inst, Value {
 }
 
 /// Obtains the address of the concrete value packaged inside an existential container.
-///
-/// The instruction checks whether the container is witnessed by `type`. If it is, the resulting
-/// address can be loaded as an instance of `type`. Otherwise, the instruction produces a null
-/// location.
 public final class OpenExistentialAddrInst: Inst, Value {
 
   /// The address of the existential container to open.
@@ -101,8 +97,8 @@ public final class CopyAddrInst: Inst {
 
 /// Converts an address to a different type.
 ///
-/// The instruction checks whether the conversion is legal and fails at runtime error if `source`
-/// does not have a layout that matches the requested type.
+/// `unsafe_cast_addr` checks whether the conversion is legal and fails at runtime if `source` does
+/// not have a layout that matches the requested type.
 public final class UnsafeCastAddrInst: Inst, Value {
 
   /// The address to convert.
@@ -124,7 +120,7 @@ public final class UnsafeCastAddrInst: Inst, Value {
 
 /// Attempts to convert an address to a different type.
 ///
-/// The instruction produces an address suitable to load an object of the requested type if the
+/// `checked_cast_addr` produces an address suitable to load an object of the requested type if the
 /// conversion is legal, or a null location otherwise.
 public final class CheckedCastAddrInst: Inst, Value {
 
@@ -229,7 +225,7 @@ public final class ThinToThickInst: Inst, Value {
 
 }
 
-/// Creates a record value (i.e., the instance of a product type).
+/// Creates an uninitialized record value (i.e., the instance of a product type).
 public final class RecordInst: Inst, Value {
 
   /// The declaration of the type of which the record value is an instance.

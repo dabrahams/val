@@ -97,9 +97,9 @@ public enum Emitter {
         }
       }
 
-      let table = WitnessTable(
+      let table = ViewWitnessTable(
         type: decl.instanceType as! NominalType, view: conformance.viewType, entries: entries)
-      builder.module.witnessTables.append(table)
+      builder.module.viewWitnessTables.append(table)
     }
 
     // Emit the direct members of the declaration.
@@ -408,7 +408,7 @@ public enum Emitter {
       })
 
       if case .success(let result) = result {
-        // If the r-value has a different type than the l-value, it must be casted.
+        // If the r-value has a different type than the l-value, it must be cast.
         var source = result.loc
         if destType != exprType {
           source = builder.buildUnsafeCastAddr(source: source, type: dest.type)

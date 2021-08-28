@@ -9,6 +9,12 @@ struct CallStack {
 
   fileprivate typealias FrameHeader = (previousFrameOffset: Int, rtti: RTTI)
 
+  struct FrameBuffer {
+
+    fileprivate let buffer: UnsafeMutableRawBufferPointer
+
+  }
+
   /// The memory of the stack.
   fileprivate var memory: UnsafeMutableRawBufferPointer
 
@@ -29,7 +35,7 @@ struct CallStack {
   }
 
   mutating func deinitialize() {
-    while lastFrameOffset != -1 { popFrame() }
+    while lastFrameOffset != -1 { removeFrame() }
     memory.deallocate()
   }
 
@@ -55,11 +61,11 @@ struct CallStack {
     top = base + MemoryLayout<FrameHeader>.size
   }
 
-  /// Pops a frame from the stack, deinitializing its header.
-  mutating func popFrame() {
+  /// Removes the latest frame from the stack, deinitializing its header.
+  mutating func removeFrame() {
     precondition(!isEmpty, "the stack is empty")
 
-    // Restore the frame index and deinitializes the frame.
+    // Restore the offset of the previous frame and deinitializes the current one.
     let header = memory.baseAddress!
       .advanced(by: lastFrameOffset)
       .assumingMemoryBound(to: FrameHeader.self)
@@ -109,22 +115,38 @@ struct CallStack {
     top -= byteCount
   }
 
-  mutating func withUnsafeBytes<R>(
-    from offset: Int, count: Int, _ body: (UnsafeRawBufferPointer) -> R
-  ) -> R {
-    precondition(offset + count <= top, "address is out of range")
-    return body(UnsafeRawBufferPointer(rebasing: memory[offset ..< offset + count]))
+  /// Copies `count` bytes of from the location pointed to by `src` directly to the memory pointed
+  /// to by `dst`.
+  mutating func copyMemory(to dst: Int, from src: Int, count: Int) {
+    precondition(dst + count <= top, "destination address is out of range")
+    precondition(src + count <= top, "source address is out of range")
+    memory.baseAddress!
+      .advanced(by: dst)
+      .copyMemory(from: memory.baseAddress!.advanced(by: src), byteCount: count)
   }
 
-  /// Calls the given closure with a native mutable pointer corresponding to the given address.
+  /// Calls the given closure with a pointer referencing the memory at the given offset.
   ///
   /// - Note: The method is mutating to guarantee that it has exclusive access to the stack's
   ///   memory while `body` is executed.
   ///
   /// - Parameters:
   ///   - offset: An offset from the base address of this stack.
-  ///   - body: A closure that takes a mutable pointer to the memory at the given offset. The
-  ///     argument is valid only for the duration of the closure's execution.
+  ///   - body: A closure that takes a pointer referencing the memory at the given offset.
+  ///     The argument is valid only for the duration of the closure's execution.
+  mutating func withUnsafeRawPointer<R>(
+    from offset: Int, _ body: (UnsafeRawPointer) -> R
+  ) -> R {
+    precondition(offset <= top, "address is out of range")
+    return body(UnsafeRawPointer(memory.baseAddress!.advanced(by: offset)))
+  }
+
+  /// Calls the given closure with a mutable pointer referencing the memory at the given offset.
+  ///
+  /// - Parameters:
+  ///   - offset: An offset from the base address of this stack.
+  ///   - body: A closure that takes a mutable pointer referencing the memory at the given offset.
+  ///     The argument is valid only for the duration of the closure's execution.
   mutating func withUnsafeMutableRawPointer<R>(
     from offset: Int, _ body: (UnsafeMutableRawPointer) -> R
   ) -> R {
@@ -155,7 +177,7 @@ extension CallStack: CustomReflectable {
     var start = lastFrameOffset
     var end = top
     while start != -1 {
-      let frame = FrameReflection(memory: memory, start: start, byteCount: end - start)
+      let frame = CallFrameReflection(memory: memory, start: start, byteCount: end - start)
       children.append((label: "+\(start)", value: frame))
       end = start
       start = frame.previousFrameOffset
@@ -166,23 +188,24 @@ extension CallStack: CustomReflectable {
 
 }
 
-fileprivate struct FrameReflection: CustomReflectable {
+fileprivate struct CallFrameReflection: CustomReflectable {
 
   let previousFrameOffset: Int
 
-  let children: [(label: String, value: CellReflection)]
+  let children: [(label: String, value: CallFrameCellReflection)]
 
   init(memory: UnsafeMutableRawBufferPointer, start: Int, byteCount: Int) {
     let header = memory.baseAddress!
       .advanced(by: start)
       .load(as: CallStack.FrameHeader.self)
 
-    var children: [(String, CellReflection)] = []
+    var children: [(String, CallFrameCellReflection)] = []
     for i in 0 ..< header.rtti.count {
       let (offset, type) = header.rtti[i]
       let upper = i < (header.rtti.count - 1) ? header.rtti[i + 1].offset : byteCount
       let slice = memory[(start + offset) ..< (start + upper)]
-      let value = CellReflection(contents: UnsafeRawBufferPointer(rebasing: slice), type: type)
+      let value = CallFrameCellReflection(
+        contents: UnsafeRawBufferPointer(rebasing: slice), type: type)
 
       children.append((label: "+\(start + offset)", value: value))
     }
@@ -197,7 +220,7 @@ fileprivate struct FrameReflection: CustomReflectable {
 
 }
 
-fileprivate struct CellReflection: CustomReflectable {
+fileprivate struct CallFrameCellReflection: CustomReflectable {
 
   let contents: UnsafeRawBufferPointer
 

@@ -507,11 +507,7 @@ struct RValueEmitter: ExprVisitor {
         builder.buildStore(lvalue: patLoc, rvalue: subject)
 
         if node.subject.type.isExistential {
-          if pattern.type.isExistential {
-            patLoc = builder.buildCheckedCastAddr(source: patLoc, type: patType.address)
-          } else {
-            patLoc = builder.buildOpenExistentialAddr(container: patLoc, type: patType.address)
-          }
+          patLoc = builder.buildCheckedCastAddr(source: patLoc, type: patType.address)
         } else {
           fatalError("not implemented")
         }

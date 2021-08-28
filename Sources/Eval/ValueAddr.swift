@@ -1,5 +1,8 @@
 /// The address of a runtime value.
-public enum ValueAddr {
+enum ValueAddr: Equatable {
+
+  /// The null address.
+  case null
 
   /// A stack address, represented as an offset from the stack's base address.
   case stack(Int)
@@ -12,6 +15,8 @@ public enum ValueAddr {
   /// - Parameter offset: The offset to apply to this address.
   func advanced(by offset: Int) -> ValueAddr {
     switch self {
+    case .null:
+      fatalError("null address")
     case .stack(let i):
       return .stack(i + offset)
     case .heap(let ptr):

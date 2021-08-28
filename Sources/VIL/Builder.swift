@@ -1,4 +1,5 @@
 import AST
+import Basic
 
 /// A builder for VIL code.
 public final class Builder {
@@ -9,8 +10,8 @@ public final class Builder {
   /// The current insertion point of the builder.
   public var insertionPoint: InsertionPoint?
 
-  /// A counter to generate unique IDs.
-  private var nextID = 0
+  /// An identifier factory.
+  private var idFactory = AutoIncrementFactory()
 
   /// Creates a new VIL instruction builder.
   ///
@@ -23,8 +24,7 @@ public final class Builder {
 
   /// Builds a unique identifier.
   public func buildUniqueID() -> Int {
-    defer { nextID += 1 }
-    return nextID
+    return idFactory.makeID()
   }
 
   /// Retrieves or creates a function with the specified name and type.

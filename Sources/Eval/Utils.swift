@@ -4,7 +4,9 @@
 ///   - alignment: The designed alignment.
 ///   - offset: An offset from a base address, possibly misaligned.
 func nextOffset(alignedAt alignment: Int, from offset: Int) -> Int {
-  return offset.roundedAwayFromZero(toNearestMultipleOf: alignment)
+  // An offset can be rounded up to the required alignment by adding the alignment decremented by
+  // one and mask the result by the negation of that decrement.
+  return (offset + alignment - 1) & ~(alignment - 1)
 }
 
 /// Returns `true` if the given type is trivial and can can be byte-wise copied.

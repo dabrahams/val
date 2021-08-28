@@ -1416,7 +1416,7 @@ public final class TypeVar: ValType, Hashable {
   public private(set) weak var node: Node?
 
   public init(context: Context, node: Node? = nil) {
-    self.id = TypeVar.createID()
+    self.id = TypeVar.idFactory.makeID()
     self.node = node
     super.init(context: context, props: [.isCanonical, .hasVariables])
   }
@@ -1431,11 +1431,6 @@ public final class TypeVar: ValType, Hashable {
 
   public override var description: String { "τ\(id)" }
 
-  private static var nextID = 0
-
-  private static func createID() -> Int {
-    nextID += 1
-    return nextID
-  }
+  private static var idFactory = AutoIncrementFactory(start: 1)
 
 }

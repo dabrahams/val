@@ -25,7 +25,7 @@ public struct Interpreter {
   private var functions: [String: Function] = [:]
 
   /// The witness tables loaded into the interpreter.
-  private var witnessTables: [WitnessTable] = []
+  private var witnessTables: [ViewWitnessTable] = []
 
   /// The runtime stack of the interpreter.
   private var stack: [RuntimeValue] = []
@@ -60,7 +60,7 @@ public struct Interpreter {
         throw RuntimeError(message: "duplicate symbol '\(lhs)'")
       }
     })
-    witnessTables.append(contentsOf: module.witnessTables)
+    witnessTables.append(contentsOf: module.viewWitnessTables)
   }
 
   /// Start the interpreter.

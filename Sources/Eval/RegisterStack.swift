@@ -45,16 +45,19 @@ struct RegisterEntryInfo {
     if busy { rawValue |= (1 << 63) }
   }
 
+  /// The offset of the register from the stack's base address.
   var offset: Int {
     get { Int(truncatingIfNeeded: rawValue & (1 << 48 - 1)) }
     set { rawValue = rawValue & ~(1 << 48 - 1) | UInt64(truncatingIfNeeded: newValue) }
   }
 
+  /// The number of bytes stored in the register.
   var count: Int {
     get { Int(truncatingIfNeeded: (rawValue >> 48) & ~(1 << 15)) }
     set { rawValue = rawValue & (~0 >> 16 | 1 << 63) | UInt64(truncatingIfNeeded: newValue) << 48 }
   }
 
+  /// A flag indicating whether the register has been assigned.
   var busy: Bool {
     get { Int(truncatingIfNeeded: rawValue >> 63) != 0 }
     set { rawValue = rawValue & (~0 >> 1) | (newValue ? (1 << 63) : 0) }
@@ -133,7 +136,7 @@ struct RegisterStack {
   }
 
   mutating func deinitialize() {
-    while lastFrameOffset != -1 { popFrame() }
+    while lastFrameOffset != -1 { removeFrame() }
     memory.deallocate()
   }
 
@@ -157,11 +160,11 @@ struct RegisterStack {
     top = base + MemoryLayout<Frame.Header>.size
   }
 
-  /// Pops a frame from the stack, deinitializing its header.
-  mutating func popFrame() {
+  /// Removes the latest frame from the stack, deinitializing its header.
+  mutating func removeFrame() {
     precondition(!isEmpty, "the stack is empty")
 
-    // Restore the frame index and deinitializes the frame.
+    // Restore the offset of the previous frame and deinitializes the current one.
     let header = memory.baseAddress!
       .advanced(by: lastFrameOffset)
       .assumingMemoryBound(to: Frame.Header.self)
@@ -215,14 +218,8 @@ struct RegisterStack {
     header.pointee.table[key]!.busy = true
   }
 
-  mutating func reserve(
-    registerOfType type: VILType, layout: DataLayout, forKey key: RegisterTableKey
-  ) {
-    _ = allocate(
-      byteCount: layout.size(of: type),
-      alignedAt: layout.alignment(of: type),
-      busy: false,
-      forKey: key)
+  mutating func reserve(byteCount: Int, alignedAt alignment: Int, forKey key: RegisterTableKey) {
+    _ = allocate(byteCount: byteCount, alignedAt: alignment, busy: false, forKey: key)
   }
 
   private mutating func allocate(

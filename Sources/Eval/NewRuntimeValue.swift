@@ -43,15 +43,15 @@ extension NewRuntimeValue {
 
 }
 
+extension Bool: NewRuntimeValue {}
+
 extension BuiltinFunction: NewRuntimeValue {}
 
 extension ExistentialContainer: NewRuntimeValue {}
 
-extension Int: NewRuntimeValue {}
-
 extension InstAddr: NewRuntimeValue {}
 
-extension Optional: NewRuntimeValue where Wrapped == InstAddr {}
+extension Int: NewRuntimeValue {}
 
 extension ValueAddr: NewRuntimeValue {}
 

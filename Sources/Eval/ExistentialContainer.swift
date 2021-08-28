@@ -10,8 +10,8 @@ struct ExistentialContainer {
   /// pointer referencing the memory in which the value is packaged.
   var payload: (Int, Int, Int)
 
-  /// The type of the value stored in the container, if any.
-  var witness: UnsafeMutableRawPointer?
+  /// The key identifying the value witness table of the he type stored in the container.
+  var witnessKey: NewInterpreter.ValueWitnessTableKey
 
   /// Returns whether the payload of an existential container holds the given number of bytes.
   static func holdsInPayload(byteCount: Int, alignedAt alignment: Int) -> Bool {
