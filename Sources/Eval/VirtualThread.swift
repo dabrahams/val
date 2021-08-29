@@ -1,4 +1,3 @@
-import struct Foundation.Data
 import Basic
 
 /// A thread managed by the virtual machine (a.k.a. a green thread).
@@ -16,7 +15,7 @@ struct VirtualThread {
   var programCounter = InstAddr.null
 
   /// The result of the thread, once it has returned from its entry point.
-  var result: Data?
+  var result: RuntimeValue?
 
   init(
     id: VirtualThread.ID,

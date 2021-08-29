@@ -1,17 +1,4 @@
-import class Foundation.FileHandle
 import VIL
-
-/// A "thin" function, i.e., a single function pointer.
-struct ThinFunction {
-
-  /// A function pointer.
-  let ptr: UnsafeRawPointer
-
-  init(function: VIL.Function) {
-    ptr = UnsafeRawPointer(Unmanaged.passUnretained(function).toOpaque())
-  }
-
-}
 
 /// A "thick" function, pairing a (potentially thick) function with a pointer to its environment.
 struct ThickFunction {
@@ -21,7 +8,7 @@ struct ThickFunction {
 
     case thin(UnsafeRawPointer)
 
-    case thick(ValueAddr)
+    case thick(UnsafeRawPointer)
 
   }
 
@@ -83,49 +70,49 @@ struct BuiltinFunction {
     case .set_status:
       let a = args[0].open(as: Int.self)
       interpreter.status = a
-      return UnsafeRawBufferPointer(start: nil, count: 0)
+      return .unit
 
     case .i64_print:
       let a = args[0].open(as: Int.self)
       interpreter.standardOutput.write("\(a)\n".data(using: .utf8)!)
-      return UnsafeRawBufferPointer(start: nil, count: 0)
+      return .unit
 
     case .i64_trunc_IntLiteral:
-      assert(args[0]._byteCount == MemoryLayout<Int>.size)
+      assert(args[0].byteCount == MemoryLayout<Int>.size)
       return args[0]
 
     case .i64_add:
       let a = args[0].open(as: Int.self)
       let b = args[1].open(as: Int.self)
-      return a + b
+      return RuntimeValue(copyingRawBytesOf: a + b)
 
     case .i64_sub:
       let a = args[0].open(as: Int.self)
       let b = args[1].open(as: Int.self)
-      return a - b
+      return RuntimeValue(copyingRawBytesOf: a - b)
 
     case .i64_mul:
       let a = args[0].open(as: Int.self)
       let b = args[1].open(as: Int.self)
-      return a * b
+      return RuntimeValue(copyingRawBytesOf: a * b)
 
     case .i64_div:
       let a = args[0].open(as: Int.self)
       let b = args[1].open(as: Int.self)
-      return a / b
+      return RuntimeValue(copyingRawBytesOf: a / b)
 
     case .i64_rem:
       let a = args[0].open(as: Int.self)
       let b = args[1].open(as: Int.self)
-      return a % b
+      return RuntimeValue(copyingRawBytesOf: a % b)
 
     case .i64_neg:
       let a = args[0].open(as: Int.self)
-      return -a
+      return RuntimeValue(copyingRawBytesOf: -a)
 
     case .i64_abs:
       let a = args[0].open(as: Int.self)
-      return abs(a)
+      return RuntimeValue(copyingRawBytesOf: abs(a))
     }
   }
 

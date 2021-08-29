@@ -131,8 +131,8 @@ struct CallStack {
     return addr
   }
 
-  /// Deallocates a value from the top of the stack. The memory must be deinitialized.
-  mutating func pop(byteCount: Int, as type: VILType) {
+  /// Deallocates a value from the top of the stack.
+  mutating func pop(type: VILType) {
     precondition(!isEmpty, "the stack is empty")
 
     let header = memory.baseAddress!
@@ -141,10 +141,10 @@ struct CallStack {
 
     guard let last = header.pointee.rtti.last,
           last.type == type
-    else { fatalError("top of the stack does not have the expected type") }
+    else { fatalError("shallowest value of the stack does not have the expected type") }
 
     header.pointee.rtti.removeLast()
-    top -= byteCount
+    top -= (lastFrameOffset + last.offset)
   }
 
   /// Copies `count` bytes of from the location pointed to by `src` directly to the memory pointed

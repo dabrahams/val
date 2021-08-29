@@ -1,4 +1,3 @@
-import struct Foundation.Data
 import class Foundation.FileHandle
 
 import class AST.ValType
@@ -187,9 +186,9 @@ public struct Interpreter {
     // Push a new from onto the register stack and the call stack.
     threads[threadID]!.callStack.pushFrame()
     threads[threadID]!.registerStack.pushFrame()
-    threads[threadID]!.registerStack.assign(value: callerAddr, to: .callerAddr)
+    threads[threadID]!.registerStack.assign(native: callerAddr, to: .callerAddr)
     for (arg, reg) in zip(args, function.blocks[entryID]!.arguments) {
-      arg.assign(to: .value(reg), in: &threads[threadID]!.registerStack)
+      threads[threadID]!.registerStack.assign(value: arg, to: .value(reg))
     }
 
     // Jump into the callee.
@@ -293,45 +292,46 @@ public struct Interpreter {
         }
       })
 
-    addr.assign(to: .value(inst), in: &activeThread.registerStack)
+    activeThread.registerStack.assign(native: addr, to: .value(inst))
     activeThread.programCounter.offset += 1
   }
 
   private mutating func eval(inst: AllocStackInst) {
     precondition(!activeThread.callStack.isEmpty, "allocation outside of a call frame")
     let addr = activeThread.callStack.allocate(type: inst.allocatedType, layout: layout)
-    addr.assign(to: .value(inst), in: &activeThread.registerStack)
+    activeThread.registerStack.assign(native: addr, to: .value(inst))
     activeThread.programCounter.offset += 1
   }
 
   private mutating func eval(inst: ApplyInst) {
-    let callee = eval(value: inst.fun)
+    // The callee is either a function literal identifying a built-in or a thin function, or a
+    // reference to a register that holds a thick function.
+    switch inst.fun {
+    case let literal as BuiltinFunRef:
+      let callee = BuiltinFunction(literal: literal)
+        ?< fatalError("no built-in function named '\(literal.decl.name)'")
+      let args = inst.args.map({ eval(value: $0) })
 
-    var args = Deque<RuntimeValue>()
-    for value in inst.args {
-      args.append(eval(value: value))
-    }
-
-    // The callee is either a function literal or a reference to a register that holds a thick
-    // function. In the former case, `eval(value:)` will have returned a function value. In the
-    // latter case, it will have returned a buffer that we should load as a thick function.
-    switch callee {
-    case let callee as BuiltinFunction:
       let result = callee.apply(to: Array(args), in: &self)
-      result.assign(to: .value(inst), in: &activeThread.registerStack)
+      activeThread.registerStack.assign(value: result, to: .value(inst))
       activeThread.programCounter.offset += 1
 
-    case let callee as ThinFunction:
-      let function = Unmanaged<Function>.fromOpaque(callee.ptr).takeUnretainedValue()
+    case let literal as FunRef:
+      let args = inst.args.map({ eval(value: $0) })
       invoke(
-        function: function,
+        function: functions[literal.name]!,
         threadID: activeThreadID,
         callerAddr: activeThread.programCounter,
         args: args,
         returnKey: .value(inst))
 
     default:
-      var thick = callee.open(as: ThickFunction.self)
+      var thick = eval(value: inst.fun).open(as: ThickFunction.self)
+      var args = Deque<RuntimeValue>()
+      for value in inst.args {
+        args.append(eval(value: value))
+      }
+
       var function: Function?
       loop:while true {
         // Unpack the environment.
@@ -344,8 +344,8 @@ public struct Interpreter {
         case .thin(let ptr):
           function = Unmanaged<Function>.fromOpaque(ptr).takeUnretainedValue()
           break loop
-        case .thick(let addr):
-          withValue(at: addr, boundTo: ThickFunction.self, { thick = $0 })
+        case .thick(let ptr):
+          thick = ptr.assumingMemoryBound(to: ThickFunction.self).pointee
         }
       }
 
@@ -381,7 +381,7 @@ public struct Interpreter {
     // Mark the active thread as a dependent of the thread executing the async expression and store
     // the latter's ID into a register.
     threadDependencyGraph.insertDependency(dependent: activeThreadID, supplier: supplierID)
-    supplierID.assign(to: .value(inst), in: &activeThread.registerStack)
+    activeThread.registerStack.assign(native: supplierID, to: .value(inst))
     activeThread.programCounter.offset += 1
   }
 
@@ -441,7 +441,7 @@ public struct Interpreter {
       castAddr = .null
     }
 
-    castAddr.assign(to: .value(inst), in: &activeThread.registerStack)
+    activeThread.registerStack.assign(native: castAddr, to: .value(inst))
     activeThread.programCounter.offset += 1
   }
 
@@ -493,8 +493,7 @@ public struct Interpreter {
   private mutating func eval(inst: EqualAddrInst) {
     let lhs = eval(value: inst.lhs).open(as: ValueAddr.self)
     let rhs = eval(value: inst.rhs).open(as: ValueAddr.self)
-    let result = lhs == rhs
-    result.assign(to: .value(inst), in: &activeThread.registerStack)
+    activeThread.registerStack.assign(native: lhs == rhs, to: .value(inst))
     activeThread.programCounter.offset += 1
   }
 
@@ -523,13 +522,14 @@ public struct Interpreter {
     // stored in the container.
     if ExistentialContainer.holdsInPayload(byteCount: table.size, alignedAt: table.alignment) {
       withUnsafeBytes(of: container.payload, { (buffer) -> Void in
-        let buffer = UnsafeRawBufferPointer(rebasing: buffer[0 ..< table.size])
-        buffer.assign(to: .value(inst), in: &activeThread.registerStack)
+        activeThread.registerStack.assign(
+          contentsOf: UnsafeRawBufferPointer(rebasing: buffer[0 ..< table.size]),
+          to: .value(inst))
       })
     } else {
       let buffer = UnsafeRawBufferPointer(
         start: UnsafeRawPointer(bitPattern: container.payload.0), count: container.payload.1)
-      buffer.assign(to: .value(inst), in: &activeThread.registerStack)
+      activeThread.registerStack.assign(contentsOf: buffer, to: .value(inst))
     }
 
     activeThread.programCounter.offset += 1
@@ -554,29 +554,32 @@ public struct Interpreter {
         }
       })
 
-    addr.assign(to: .value(inst), in: &activeThread.registerStack)
+    activeThread.registerStack.assign(native: addr, to: .value(inst))
     activeThread.programCounter.offset += 1
   }
 
   private mutating func eval(inst: PartialApplyInst) {
-    let fun = eval(value: inst.fun)
-    precondition(!(fun is BuiltinFunction), "cannot partially apply built-in function")
-
-    // Create the closure's environment.
-    var args: [RuntimeValue] = []
-    var params: [VILType] = []
-    for i in 0 ..< inst.args.count {
-      args.append(eval(value: inst.args[i]))
-      params.append(inst.args[i].type)
+    func _makeEnvironment() -> UnsafeRawPointer {
+      var args: [RuntimeValue] = []
+      var params: [VILType] = []
+      for i in 0 ..< inst.args.count {
+        args.append(eval(value: inst.args[i]))
+        params.append(inst.args[i].type)
+      }
+      return makeEnvironment(args: args, params: params)
     }
-    let env = makeEnvironment(args: args, params: params)
 
-    if let callee = fun as? ThinFunction {
-      let partial = ThickFunction(delegator: .thin(callee.ptr), env: env)
-      partial.assign(to: .value(inst), in: &activeThread.registerStack)
-    } else {
-//      var thick = fun.open(as: ThickFunction.self)
-//      var function: Function?
+    switch inst.fun {
+    case is BuiltinFunRef:
+      fatalError("cannot partially apply built-in function")
+
+    case let literal as FunRef:
+      let delegator = Unmanaged.passUnretained(functions[literal.name]!).toOpaque()
+      let env = _makeEnvironment()
+      let partial = ThickFunction(delegator: .thin(delegator), env: env)
+      activeThread.registerStack.assign(native: partial, to: .value(inst))
+
+    default:
       fatalError("not implemented")
     }
 
@@ -593,13 +596,17 @@ public struct Interpreter {
   }
 
   private mutating func eval(inst: RecordMemberInst) {
-    let record = eval(value: inst.record) as! UnsafeRawBufferPointer
+    let record = eval(value: inst.record)
     let offset = layout.offset(of: inst.memberDecl.name, in: inst.record.type)
       ?< fatalError("failed to compute member offset")
 
     let byteCount = layout.size(of: inst.type)
-    let buffer = UnsafeRawBufferPointer(rebasing: record[offset ..< (offset + byteCount)])
-    buffer.assign(to: .value(inst), in: &activeThread.registerStack)
+    let member = record.withUnsafeBytes({ bytes in
+      return RuntimeValue(
+        borrowing: UnsafeRawBufferPointer(rebasing: bytes[offset ..< (offset + byteCount)]))
+    })
+
+    activeThread.registerStack.assign(value: member, to: .value(inst))
     activeThread.programCounter.offset += 1
   }
 
@@ -607,7 +614,8 @@ public struct Interpreter {
     let base = eval(value: inst.record).open(as: ValueAddr.self)
     let offset = layout.offset(of: inst.memberDecl.name, in: inst.record.type.object)
       ?< fatalError("failed to compute member offset")
-    base.advanced(by: offset).assign(to: .value(inst), in: &activeThread.registerStack)
+
+    activeThread.registerStack.assign(native: base.advanced(by: offset), to: .value(inst))
     activeThread.programCounter.offset += 1
   }
 
@@ -628,15 +636,14 @@ public struct Interpreter {
       // move it to the return register without allocating anything else.
       let callerInst = load(instAddr: callerAddr) as? ApplyInst
         ?< fatalError("bad caller address")
-      result.assignNoAlloc(to: .value(callerInst), in: &activeThread.registerStack)
+
+      result.withUnsafeBytes({ bytes in
+        activeThread.registerStack.assignNoAlloc(contentsOf: bytes, to: .value(callerInst))
+      })
       activeThread.programCounter = callerAddr
       activeThread.programCounter.offset += 1
     } else {
-      activeThread.result = result.withUnsafeBytes({ (buffer) -> Data in
-        return buffer.count > 0
-          ? Data(bytes: buffer.baseAddress!, count: buffer.count)
-          : Data()
-      })
+      activeThread.result = result.withUnsafeBytes(RuntimeValue.init(copying:))
       activeThread.programCounter = .null
 
       // Deallocate the thread's memory.
@@ -663,7 +670,7 @@ public struct Interpreter {
 
   private mutating func eval(inst: ThinToThickInst) {
     let thick = ThickFunction(thin: functions[inst.ref.name]!)
-    thick.assign(to: .value(inst), in: &activeThread.registerStack)
+    activeThread.registerStack.assign(native: thick, to: .value(inst))
     activeThread.programCounter.offset += 1
   }
 
@@ -671,24 +678,20 @@ public struct Interpreter {
   private mutating func eval(value: Value) -> RuntimeValue {
     switch value {
     case is UnitValue:
-      return UnsafeRawBufferPointer(start: nil, count: 0)
+      return .unit
 
     case is NullAddr:
-      return ValueAddr.null
+      return RuntimeValue(copyingRawBytesOf: ValueAddr.null)
 
     case let literal as IntLiteralValue:
-      return literal.value
+      return RuntimeValue(copyingRawBytesOf: literal.value)
 
-    case let literal as BuiltinFunRef:
-      let fun = BuiltinFunction(literal: literal)
-        ?< fatalError("no built-in function named '\(literal.decl.name)'")
-      return fun
-
-    case let literal as FunRef:
-      return ThinFunction(function: functions[literal.name]!)
+    case is BuiltinFunRef, is FunRef:
+      fatalError("unexpected function literal")
 
     default:
-      return activeThread.registerStack.unsafeRawBufferPointer(forKey: .value(value))
+      return RuntimeValue(
+        borrowing: activeThread.registerStack.unsafeRawBufferPointer(forKey: .value(value)))
     }
   }
 
@@ -733,11 +736,12 @@ public struct Interpreter {
       fatalError("null address")
 
     case .stack(let offset):
-      threads[offset.threadID]!.callStack
-        .withUnsafeMutableRawPointer(from: offset, value.store(to:))
+      threads[offset.threadID]!.callStack.withUnsafeMutableRawPointer(
+        from: offset,
+        value.copyMemory(to:))
 
     case .heap(let ptr):
-      addr.store(to: ptr)
+      value.copyMemory(to: ptr)
     }
   }
 
@@ -802,7 +806,7 @@ public struct Interpreter {
     // Pack the arguments into the environment.
     for i in 0 ..< params.count {
       witnessTableKeys[i] = valueWitnessTableKey(of: params[i])
-      args[i].store(to: env.advanced(by: offset + payloadOffsets[i]))
+      args[i].copyMemory(to: env.advanced(by: offset + payloadOffsets[i]))
     }
 
     return UnsafeRawPointer(env)
@@ -822,7 +826,8 @@ public struct Interpreter {
     var values: [RuntimeValue] = []
     for i in 0 ..< count {
       let table = valueWitnessTables[witnessTableKeys[i].index]
-      values.append(UnsafeRawBufferPointer(start: env + offset, count: table.size))
+      values.append(
+        RuntimeValue(borrowing: UnsafeRawBufferPointer(start: env + offset, count: table.size)))
       offset += nextOffset(alignedAt: align, from: offset + table.size)
     }
 
