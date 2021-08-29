@@ -78,7 +78,7 @@ struct BuiltinFunction {
     self.init(id: id)
   }
 
-  func apply(to args: [NewRuntimeValue], in interpreter: inout NewInterpreter) -> NewRuntimeValue {
+  func apply(to args: [RuntimeValue], in interpreter: inout Interpreter) -> RuntimeValue {
     switch id {
     case .set_status:
       let a = args[0].open(as: Int.self)

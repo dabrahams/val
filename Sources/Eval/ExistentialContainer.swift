@@ -11,7 +11,7 @@ struct ExistentialContainer {
   var payload: (Int, Int, Int)
 
   /// The key identifying the value witness table of the he type stored in the container.
-  var witnessKey: NewInterpreter.ValueWitnessTableKey
+  var witnessKey: Interpreter.ValueWitnessTableKey
 
   /// Returns whether the payload of an existential container holds the given number of bytes.
   static func holdsInPayload(byteCount: Int, alignedAt alignment: Int) -> Bool {

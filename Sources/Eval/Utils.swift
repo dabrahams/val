@@ -32,9 +32,9 @@ extension Int {
     v |= v >> 4
     v |= v >> 8
     v |= v >> 16
-    #if (arch(x86_64) || arch(arm64))
+#if arch(x86_64) || arch(arm64) || arch(s390x) || arch(powerpc64) || arch(powerpc64le)
     v |= v >> 32
-    #endif
+#endif
     return v + 1
   }
 

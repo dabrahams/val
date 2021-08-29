@@ -5,15 +5,43 @@ import VIL
 /// Memory is 8 bytes aligned, assuming the native machine has 64-bit integers.
 struct CallStack {
 
+  /// An offset in a call stack, tagged with the ID of the thread to which the stack belongs.
+  struct Offset: Equatable {
+
+    private var rawValue: UInt64
+
+    init(threadID: VirtualThread.ID, value: Int) {
+      assert(threadID >> 16 == 0)
+      assert(value >> 48 == 0)
+      rawValue = UInt64(truncatingIfNeeded: value) | UInt64(truncatingIfNeeded: threadID) << 48
+    }
+
+    /// A thread ID.
+    var threadID: VirtualThread.ID {
+      get { Int(truncatingIfNeeded: rawValue >> 48) }
+      set {
+        assert(newValue >> 16 == 0)
+        rawValue = rawValue & (~0 >> 16) | UInt64(truncatingIfNeeded: newValue) << 48
+      }
+    }
+
+    /// The value of the offset.
+    var value: Int {
+      get { Int(truncatingIfNeeded: rawValue & (1 << 48 - 1)) }
+      set {
+        assert(newValue >> 48 == 0)
+        rawValue = rawValue & ~(1 << 48 - 1) | UInt64(truncatingIfNeeded: newValue)
+      }
+    }
+
+  }
+
   fileprivate typealias RTTI = [(offset: Int, type: VILType)]
 
   fileprivate typealias FrameHeader = (previousFrameOffset: Int, rtti: RTTI)
 
-  struct FrameBuffer {
-
-    fileprivate let buffer: UnsafeMutableRawBufferPointer
-
-  }
+  /// The identifier of the thread owning this stack.
+  fileprivate var threadID: VirtualThread.ID
 
   /// The memory of the stack.
   fileprivate var memory: UnsafeMutableRawBufferPointer
@@ -27,16 +55,20 @@ struct CallStack {
   /// Creates a call stack.
   ///
   /// - Parameter initialCapacity: The initial capacity of the stack, in bytes.
-  init(initialCapacity: Int) {
-    let byteCount = max(initialCapacity, MemoryLayout<FrameHeader>.size)
-    memory = .allocate(byteCount: byteCount, alignment: Self.defaultAlignment)
-    top = 0
-    lastFrameOffset = -1
+  init(threadID: VirtualThread.ID, initialCapacity: Int) {
+    let byteCount = max(initialCapacity, MemoryLayout<FrameHeader>.stride)
+    self.threadID = threadID
+    self.memory = .allocate(byteCount: byteCount, alignment: Self.defaultAlignment)
+    self.top = 0
+    self.lastFrameOffset = -1
   }
 
   mutating func deinitialize() {
+    if memory.isEmpty { return }
+
     while lastFrameOffset != -1 { removeFrame() }
     memory.deallocate()
+    memory = UnsafeMutableRawBufferPointer(start: nil, count: 0)
   }
 
   /// A Boolean value indicating whether the stack is empty.
@@ -94,7 +126,7 @@ struct CallStack {
     memory.baseAddress!.advanced(by: base)
       .initializeMemory(as: UInt8.self, repeating: 0, count: byteCount)
 
-    let addr = ValueAddr.stack(base)
+    let addr = ValueAddr.stack(Offset(threadID: threadID, value: base))
     top = base + byteCount
     return addr
   }
@@ -117,28 +149,28 @@ struct CallStack {
 
   /// Copies `count` bytes of from the location pointed to by `src` directly to the memory pointed
   /// to by `dst`.
-  mutating func copyMemory(to dst: Int, from src: Int, count: Int) {
-    precondition(dst + count <= top, "destination address is out of range")
-    precondition(src + count <= top, "source address is out of range")
+  mutating func copyMemory(to dst: Offset, from src: Offset, count: Int) {
+    precondition(dst.threadID == threadID, "destination address is in a different stack")
+    precondition(dst.value + count <= top, "destination address is out of range")
+    precondition(src.threadID == threadID, "source address is in a different stack")
+    precondition(src.value + count <= top, "source address is out of range")
     memory.baseAddress!
-      .advanced(by: dst)
-      .copyMemory(from: memory.baseAddress!.advanced(by: src), byteCount: count)
+      .advanced(by: dst.value)
+      .copyMemory(from: memory.baseAddress!.advanced(by: src.value), byteCount: count)
   }
 
-  /// Calls the given closure with a pointer referencing the memory at the given offset.
+  /// Returns a buffer with the contents of the stack from the given offset.
   ///
-  /// - Note: The method is mutating to guarantee that it has exclusive access to the stack's
-  ///   memory while `body` is executed.
+  /// - Warning: The returned buffer is created over the internal memory of the stack and will be
+  ///   invalidated by any mutating operation on the stack.
   ///
   /// - Parameters:
   ///   - offset: An offset from the base address of this stack.
-  ///   - body: A closure that takes a pointer referencing the memory at the given offset.
-  ///     The argument is valid only for the duration of the closure's execution.
-  mutating func withUnsafeRawPointer<R>(
-    from offset: Int, _ body: (UnsafeRawPointer) -> R
-  ) -> R {
-    precondition(offset <= top, "address is out of range")
-    return body(UnsafeRawPointer(memory.baseAddress!.advanced(by: offset)))
+  ///   - byteCount: The number of bytes to access.
+  func unsafeRawBufferPointer(from offset: Offset, byteCount: Int) -> UnsafeRawBufferPointer {
+    precondition(offset.threadID == threadID, "address is in a different stack")
+    precondition(offset.value + byteCount <= top, "address is out of range")
+    return UnsafeRawBufferPointer(rebasing: memory[offset.value ..< offset.value + byteCount])
   }
 
   /// Calls the given closure with a mutable pointer referencing the memory at the given offset.
@@ -148,10 +180,11 @@ struct CallStack {
   ///   - body: A closure that takes a mutable pointer referencing the memory at the given offset.
   ///     The argument is valid only for the duration of the closure's execution.
   mutating func withUnsafeMutableRawPointer<R>(
-    from offset: Int, _ body: (UnsafeMutableRawPointer) -> R
+    from offset: Offset, _ body: (UnsafeMutableRawPointer) -> R
   ) -> R {
-    precondition(offset < top, "address is out of range")
-    return body(memory.baseAddress!.advanced(by: offset))
+    precondition(offset.threadID == threadID, "address is in a different stack")
+    precondition(offset.value <= top, "address is out of range")
+    return body(memory.baseAddress!.advanced(by: offset.value))
   }
 
   /// Expands the size of the stack.
@@ -163,7 +196,7 @@ struct CallStack {
     memory = newMemory
   }
 
-  private static let defaultAlignment = MemoryLayout<Int>.alignment
+  private static let defaultAlignment = MemoryLayout<FrameHeader>.alignment
 
 }
 
@@ -184,6 +217,14 @@ extension CallStack: CustomReflectable {
     }
 
     return Mirror(self, children: children, displayStyle: .collection)
+  }
+
+}
+
+extension CallStack.Offset: CustomReflectable {
+
+  var customMirror: Mirror {
+    return Mirror(self, children: ["threadID": threadID, "value": value])
   }
 
 }

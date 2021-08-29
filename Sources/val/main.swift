@@ -68,22 +68,14 @@ struct ValCommand: ParsableCommand {
       }
 
       // Interpret the module.
-//      var interpreter = Interpreter(context: driver.context)
-//      try interpreter.load(module: driver.lower(moduleDecl: driver.context.stdlib!))
-//      try interpreter.load(module: main)
-//      let status = try interpreter.start()
-//      if status != 0 {
-//        print("program exited with status \(status)")
-//      }
-
-      var interpreter = NewInterpreter()
+      var interpreter = Interpreter()
       if let stdlib = driver.context.stdlib {
         try interpreter.load(module: driver.lower(moduleDecl: stdlib))
       }
       try interpreter.load(module: main)
       let status = interpreter.start()
       if status != 0 {
-        print("program exited with status \(status)")
+        print("Program exited with status \(status)")
       }
     }
   }

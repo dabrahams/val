@@ -30,6 +30,9 @@ struct DataLayout {
     case let ty as TupleType:
       return size(of: ty.elems.map({ $0.type }))
 
+    case is AsyncType:
+      return MemoryLayout<VirtualThread.ID>.size
+
     default:
       fatalError("unexpected data type '\(type)'")
     }

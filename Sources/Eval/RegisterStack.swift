@@ -48,13 +48,19 @@ struct RegisterEntryInfo {
   /// The offset of the register from the stack's base address.
   var offset: Int {
     get { Int(truncatingIfNeeded: rawValue & (1 << 48 - 1)) }
-    set { rawValue = rawValue & ~(1 << 48 - 1) | UInt64(truncatingIfNeeded: newValue) }
+    set {
+      assert(offset >> 48 == 0)
+      rawValue = rawValue & ~(1 << 48 - 1) | UInt64(truncatingIfNeeded: newValue)
+    }
   }
 
   /// The number of bytes stored in the register.
   var count: Int {
     get { Int(truncatingIfNeeded: (rawValue >> 48) & ~(1 << 15)) }
-    set { rawValue = rawValue & (~0 >> 16 | 1 << 63) | UInt64(truncatingIfNeeded: newValue) << 48 }
+    set {
+      assert(count >> 15 == 0)
+      rawValue = rawValue & (~0 >> 16 | 1 << 63) | UInt64(truncatingIfNeeded: newValue) << 48
+    }
   }
 
   /// A flag indicating whether the register has been assigned.
@@ -129,15 +135,18 @@ struct RegisterStack {
   ///
   /// - Parameter initialCapacity: The initial capacity of the stack, in bytes.
   init(initialCapacity: Int) {
-    let byteCount = max(initialCapacity, MemoryLayout<Frame.Header>.size)
+    let byteCount = max(initialCapacity, MemoryLayout<Frame.Header>.stride)
     memory = .allocate(byteCount: byteCount, alignment: Self.defaultAlignment)
     top = 0
     lastFrameOffset = -1
   }
 
   mutating func deinitialize() {
+    if memory.isEmpty { return }
+
     while lastFrameOffset != -1 { removeFrame() }
     memory.deallocate()
+    memory = UnsafeMutableRawBufferPointer(start: nil, count: 0)
   }
 
   /// A Boolean value indicating whether the stack is empty.
@@ -173,7 +182,7 @@ struct RegisterStack {
     header.deinitialize(count: 1)
   }
 
-  mutating func assign<T>(value: T, to key: RegisterTableKey) where T: NewRuntimeValue {
+  mutating func assign<T>(value: T, to key: RegisterTableKey) where T: RuntimeValue {
     assert(isTrivial(T.self))
     let ptr = allocate(
       byteCount: MemoryLayout<T>.size,
@@ -254,9 +263,8 @@ struct RegisterStack {
 
   /// Returns a buffer with the contents of the register for the given key.
   ///
-  /// - Warning: The returned buffer is created over the internal memory of this register stack.
-  ///   That means that the contents of that buffer will be invalidated by any mutating operation
-  ///   on the register stack.
+  /// - Warning: The returned buffer is created over the internal memory of the stack and will be
+  ///   invalidated by any mutating operation on the stack.
   ///
   /// - Parameter key: A register key.
   func unsafeRawBufferPointer(forKey key: RegisterTableKey) -> UnsafeRawBufferPointer {
@@ -331,7 +339,7 @@ struct RegisterStack {
     return offset
   }
 
-  private static let defaultAlignment = MemoryLayout<Int>.alignment
+  private static let defaultAlignment = MemoryLayout<Frame.Header>.alignment
 
 }
 
