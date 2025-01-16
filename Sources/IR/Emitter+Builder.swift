@@ -1,3 +1,5 @@
+import FrontEnd
+
 extension Emitter {
   /// Gets the current builder context.
   private var builderContext: BuilderContext {

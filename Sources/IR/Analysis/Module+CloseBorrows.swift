@@ -116,7 +116,7 @@ extension Module {
 
       case let s as CaptureIn where use.index == 0:
         let p = provenances(s.target).uniqueElement!
-        guard self[p] is AllocStack else { UNIMPLEMENTED() }
+        guard self[p] is IR.AllocStack else { UNIMPLEMENTED() }
         let u = self.uses[p, default: []].first(where: { self[$0.user] is ReleaseCaptures })!
         return extend(lifetime: r, toInclude: u)
 

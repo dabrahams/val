@@ -1876,11 +1876,11 @@ struct Emitter {
   ///
   /// - Requires: `storage` is the address of uninitialized memory of type `Hylo.Int`.
   private mutating func emitStore(boolean v: Bool, to storage: Operand, at site: SourceRange) {
-    _ = build {
-      let x0 = SubfieldView(base: storage, indices: [0], site: site)
-      Access(effect: .set, operand: x0, site: site) 
-      Store(value: .i1(v), target: x0, site: site)
-      EndAccess(operand: x0, site: site)
+    _ = module.insert(at: insertionPoint!, site: site) {
+      let x0 = SubfieldView(base: storage, indices: [0])
+      Access(effect: .set, operand: x0)
+      Store(value: .i1(v), target: x0)
+      EndAccess(operand: x0)
     }
   }
 
@@ -2212,7 +2212,7 @@ struct Emitter {
     switch program[callee].referredDecl {
     case .direct(let d, let a) where d.isCallable:
       // Callee is a direct reference to a lambda declaration.
-      guard ArrowType(canonical(program[callee].type))!.environment.isVoid else {
+      guard ArrowType(canonicalType(of: d, specializedBy: a))!.environment.isVoid else {
         UNIMPLEMENTED("Generate IR for calls to local functions with captures #1088")
       }
       let f = FunctionReference(to: d, in: &module, specializedBy: a, in: insertionScope!)
@@ -2978,13 +2978,13 @@ struct Emitter {
   private mutating func emitMoveBuiltIn(
     _ value: Operand, to storage: Operand, at site: SourceRange
   ) {
-    _ = build {
-      Access(effect: .set, operand: storage, site: site)
-      Access(effect: .sink, operand: value, site: site)
-      Load(operand: value, site: site)
-      Store(value: value, target: storage, site: site) 
-      EndAccess(operand: value, site: site)
-      EndAccess(operand: storage, site: site)
+    _ = module.insert(at: insertionPoint!, site: site) {
+      Access(effect: .set, operand: storage)
+      Access(effect: .sink, operand: value)
+      Load(operand: value)
+      Store(value: value, target: storage)
+      EndAccess(operand: value)
+      EndAccess(operand: storage)
     }
   }
 
@@ -3568,22 +3568,22 @@ extension Emitter {
 
   /// Example of rewritten function using builder pattern
   private mutating func emitMoveBuiltIn(_ value: Operand, to storage: Operand, at site: SourceRange) {
-    _ = build {
-      Access(effect: .set, operand: storage, site: site)
-      Access(effect: .sink, operand: value, site: site)
-      Load(operand: value, site: site)
-      Store(value: value, target: storage, site: site) 
-      EndAccess(operand: value, site: site)
-      EndAccess(operand: storage, site: site)
+    _ = module.insert(at: insertionPoint!, site: site) {
+      Access(effect: .set, operand: storage)
+      Access(effect: .sink, operand: value)
+      Load(operand: value)
+      Store(value: value, target: storage)
+      EndAccess(operand: value)
+      EndAccess(operand: storage)
     }
   }
 
   private mutating func emitStore(boolean v: Bool, to storage: Operand, at site: SourceRange) {
-    _ = build {
-      let x0 = SubfieldView(base: storage, indices: [0], site: site)
-      Access(effect: .set, operand: x0, site: site) 
-      Store(value: .i1(v), target: x0, site: site)
-      EndAccess(operand: x0, site: site)
+    _ = module.insert(at: insertionPoint!, site: site) {
+      let x0 = SubfieldView(base: storage, indices: [0])
+      Access(effect: .set, operand: x0)
+      Store(value: .i1(v), target: x0)
+      EndAccess(operand: x0)
     }
   }
 

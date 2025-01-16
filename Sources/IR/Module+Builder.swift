@@ -2,16 +2,13 @@ import FrontEnd
 import Utils
 
 extension Module {
-
-  /// Builds an instruction sequence and inserts it at the current insertion point
-  mutating func buildBlock(
+  /// Builds and inserts an instruction sequence at a specific location
+  mutating func insert(
     at point: InsertionPoint,
-    @IRBuilder _ content: () -> [BuilderInstruction]
-  ) -> (lastResult: Operand?, finalPoint: InsertionPoint) {
+    site: SourceRange,
+    @IRBuilder content: () -> [BuilderInstruction]
+  ) -> Operand? {
     var ctx = BuilderContext(module: self, insertionPoint: point)
-    let result = ctx.build(content)
-    self = ctx.module
-    return (result, ctx.insertionPoint)
+    return ctx.build(at: site, content)
   }
-
 }
