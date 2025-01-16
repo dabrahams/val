@@ -1876,10 +1876,12 @@ struct Emitter {
   ///
   /// - Requires: `storage` is the address of uninitialized memory of type `Hylo.Int`.
   private mutating func emitStore(boolean v: Bool, to storage: Operand, at site: SourceRange) {
-    let x0 = emitSubfieldView(storage, at: [0], at: site)
-    let x1 = insert(module.makeAccess(.set, from: x0, at: site))!
-    insert(module.makeStore(.i1(v), at: x1, at: site))
-    insert(module.makeEndAccess(x1, at: site))
+    _ = build {
+      let x0 = SubfieldView(base: storage, indices: [0], site: site)
+      Access(effect: .set, operand: x0, site: site) 
+      Store(value: .i1(v), target: x0, site: site)
+      EndAccess(operand: x0, site: site)
+    }
   }
 
   /// Writes an instance of `Hylo.Int` with value `v` to `storage`.
@@ -2335,7 +2337,7 @@ struct Emitter {
     switch program[callee].referredDecl {
     case .direct(let d, let a) where d.kind == SubscriptDecl.self:
       // Callee is a direct reference to a subscript declaration.
-      guard SubscriptType(canonical(program[d].type))!.environment.isVoid else {
+      guard SubscriptType(canonicalType(of: d, specializedBy: a))!.environment.isVoid else {
         UNIMPLEMENTED("subscript with non-empty environment")
       }
 
@@ -2976,13 +2978,14 @@ struct Emitter {
   private mutating func emitMoveBuiltIn(
     _ value: Operand, to storage: Operand, at site: SourceRange
   ) {
-    // Built-in are always stored.
-    let x0 = insert(module.makeAccess(.set, from: storage, at: site))!
-    let x1 = insert(module.makeAccess(.sink, from: value, at: site))!
-    let x2 = insert(module.makeLoad(x1, at: site))!
-    insert(module.makeStore(x2, at: x0, at: site))
-    insert(module.makeEndAccess(x1, at: site))
-    insert(module.makeEndAccess(x0, at: site))
+    _ = build {
+      Access(effect: .set, operand: storage, site: site)
+      Access(effect: .sink, operand: value, site: site)
+      Load(operand: value, site: site)
+      Store(value: value, target: storage, site: site) 
+      EndAccess(operand: value, site: site)
+      EndAccess(operand: storage, site: site)
+    }
   }
 
   /// Inserts IR for move-initializing/assigning `storage` with `value` at `site` using `movable`
@@ -3552,4 +3555,37 @@ extension Diagnostic {
     .error("statement will never be executed", at: .empty(at: ast[s].site.start))
   }
 
+}
+
+extension Emitter {
+
+  /// Builds IR using the builder DSL
+  private mutating func build(@IRBuilder content: () -> [BuilderInstruction]) -> Operand? {
+    let (result, point) = module.buildBlock(at: insertionPoint!, content)
+    insertionPoint = point
+    return result
+  }
+
+  /// Example of rewritten function using builder pattern
+  private mutating func emitMoveBuiltIn(_ value: Operand, to storage: Operand, at site: SourceRange) {
+    _ = build {
+      Access(effect: .set, operand: storage, site: site)
+      Access(effect: .sink, operand: value, site: site)
+      Load(operand: value, site: site)
+      Store(value: value, target: storage, site: site) 
+      EndAccess(operand: value, site: site)
+      EndAccess(operand: storage, site: site)
+    }
+  }
+
+  private mutating func emitStore(boolean v: Bool, to storage: Operand, at site: SourceRange) {
+    _ = build {
+      let x0 = SubfieldView(base: storage, indices: [0], site: site)
+      Access(effect: .set, operand: x0, site: site) 
+      Store(value: .i1(v), target: x0, site: site)
+      EndAccess(operand: x0, site: site)
+    }
+  }
+
+  // Continue converting other methods using similar pattern...
 }
